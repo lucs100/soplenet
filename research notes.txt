@@ -1,0 +1,3 @@
+3b1b nn3 (or 2? it was an interview segment) notes that a neural network is acceptable when it finds ANY local minima - should cite an actual paper that deals with this to affirm the network is viable
+
+https://stats.stackexchange.com/a/211359 (relu > sigmoid)
