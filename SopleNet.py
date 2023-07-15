@@ -16,7 +16,7 @@ def sigmoid(x):
 
 def dSigmoid(x):
     """The derivative of the sigmoid function."""
-    return sigmoid(x) * (1-sigmoid(x)) 
+    return sigmoid(x) * (1-sigmoid(x))
 
 class NeuralNetwork4: #4-layer neural network
     def __init__(self, inputNeuronCount, h1NeuronCount, h2NeuronCount, outputNeuronCount):
@@ -25,12 +25,12 @@ class NeuralNetwork4: #4-layer neural network
         self.h2NeuronCount = h2NeuronCount
         self.outputNeuronCount = outputNeuronCount
 
-        self.h1Weights = np.random.rand(h1NeuronCount, inputNeuronCount)
-        self.h1Biases = np.random.rand(h1NeuronCount, 1)
-        self.h2Weights = np.random.rand(h2NeuronCount, h1NeuronCount)
-        self.h2Biases = np.random.rand(h2NeuronCount, 1)
-        self.outputWeights = np.random.rand(outputNeuronCount, h2NeuronCount)
-        self.outputBiases = np.random.rand(outputNeuronCount, 1)
+        self.h1Weights = (np.random.rand(h1NeuronCount, inputNeuronCount)*2)-1
+        self.h1Biases = (np.random.rand(h1NeuronCount, 1)*2)-1
+        self.h2Weights = (np.random.rand(h2NeuronCount, h1NeuronCount)*2)-1
+        self.h2Biases = (np.random.rand(h2NeuronCount, 1)*2)-1
+        self.outputWeights = (np.random.rand(outputNeuronCount, h2NeuronCount)*2)-1
+        self.outputBiases = (np.random.rand(outputNeuronCount, 1)*2)-1
 
         #Keep initialized to save time
         self.inputActivations = np.zeros((inputNeuronCount, 1), order=MATRIX_MODE)
@@ -77,19 +77,26 @@ class NeuralNetwork4: #4-layer neural network
         self.h2Error = np.concatenate((self.outputWeights.transpose() @ self.outputError).reshape(self.h2NeuronCount, 1) * dSigmoid(self.h2Raw).reshape(self.h2NeuronCount, 1))
         self.h1Error = np.concatenate((self.h2Weights.transpose() @ self.h2Error).reshape(self.h1NeuronCount, 1) * dSigmoid(self.h1Raw).reshape(self.h1NeuronCount, 1))
 
-    
 
-#start_time = time.time()
-testNetwork = NeuralNetwork4(5, 6, 7, 8)
-testNetwork.feedforward(np.random.rand(5, 1))
-testNetwork.outputTarget = np.array([0, 1, 0, 0, 0, 0, 0, 0], ndmin=2).transpose()
-testNetwork.backpropagateError()
-print(f"Output EV: {testNetwork.outputError}")
-print(f"Hidden2 EV: {testNetwork.h2Error}")
-print(f"Hidden1 EV: {testNetwork.h1Error}")
-# for i in range(10000):
-#     (testNetwork.feedforward(np.random.rand(3000, 1)))
 
-# print("--- %s seconds ---" % (time.time() - start_time))
+start_time = time.time()
+
+testNetwork = NeuralNetwork4(4000, 3000, 2000, 1000)
+# testNetwork.feedforward(np.random.rand(4000, 1))
+# testNetwork.outputTarget = np.zeros((1000,1))
+# testNetwork.outputTarget[234] = 1
+# testNetwork.backpropagateError()
+
+# print(f"Output EV: {testNetwork.outputError}")
+# print(f"Hidden2 EV: {testNetwork.h2Error}")
+# print(f"Hidden1 EV: {testNetwork.h1Error}")
+
+for i in range(1000):
+    testNetwork.feedforward(np.random.rand(4000, 1))
+    testNetwork.outputTarget = np.zeros((1000,1))
+    testNetwork.outputTarget[234] = 1
+    testNetwork.backpropagateError()
+
+print("--- %s seconds ---" % (time.time() - start_time))
 
 
