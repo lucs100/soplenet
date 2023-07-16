@@ -69,6 +69,9 @@ class NeuralNetwork4: #4-layer neural network
         self.outputActivations = sigmoid(self.outputRaw)
 
         return self.outputActivations
+    
+    def getIterationCost(self):
+        return np.sum((self.outputActivations-self.outputTarget)**2)
 
     def backpropagateError(self):
         """Computes each layer's error vector via backpropagation."""
@@ -77,26 +80,21 @@ class NeuralNetwork4: #4-layer neural network
         self.h2Error = np.concatenate((self.outputWeights.transpose() @ self.outputError).reshape(self.h2NeuronCount, 1) * dSigmoid(self.h2Raw).reshape(self.h2NeuronCount, 1))
         self.h1Error = np.concatenate((self.h2Weights.transpose() @ self.h2Error).reshape(self.h1NeuronCount, 1) * dSigmoid(self.h1Raw).reshape(self.h1NeuronCount, 1))
 
+    
 
+#start_time = time.time()
+testNetwork = NeuralNetwork4(5, 6, 7, 8)
+testNetwork.feedforward(np.random.rand(5, 1))
+testNetwork.outputTarget = np.array([0, 1, 0, 0, 0, 0, 0, 0], ndmin=2).transpose()
+testNetwork.backpropagateError()
+print(f"Output EV: {testNetwork.outputError}")
+print(f"Hidden2 EV: {testNetwork.h2Error}")
+print(f"Hidden1 EV: {testNetwork.h1Error}")
 
-start_time = time.time()
+print(testNetwork.getIterationCost())
+# for i in range(10000):
+#     (testNetwork.feedforward(np.random.rand(3000, 1)))
 
-testNetwork = NeuralNetwork4(4000, 3000, 2000, 1000)
-# testNetwork.feedforward(np.random.rand(4000, 1))
-# testNetwork.outputTarget = np.zeros((1000,1))
-# testNetwork.outputTarget[234] = 1
-# testNetwork.backpropagateError()
-
-# print(f"Output EV: {testNetwork.outputError}")
-# print(f"Hidden2 EV: {testNetwork.h2Error}")
-# print(f"Hidden1 EV: {testNetwork.h1Error}")
-
-for i in range(1000):
-    testNetwork.feedforward(np.random.rand(4000, 1))
-    testNetwork.outputTarget = np.zeros((1000,1))
-    testNetwork.outputTarget[234] = 1
-    testNetwork.backpropagateError()
-
-print("--- %s seconds ---" % (time.time() - start_time))
+# print("--- %s seconds ---" % (time.time() - start_time))
 
 
