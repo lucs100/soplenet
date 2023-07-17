@@ -1,8 +1,26 @@
 import numpy as np
 import time
+from dataclasses import dataclass
+import pickle
 
 np.set_printoptions(edgeitems=30, linewidth=100000)
 rng = np.random.default_rng()
+
+CIFAR_DATA_TRAIN = []
+CIFAR_DATA_TEST = []
+
+@dataclass
+class TestImage:
+    data: np.array
+    label: int
+
+def unpickle(file):
+    with open(file, 'rb') as fo:
+        dict = pickle.load(fo, encoding='bytes')
+    return dict    
+
+CIFAR_DATA_TRAIN = unpickle("cifar10TRAIN")
+CIFAR_DATA_TEST = unpickle("cifar10TEST")
 
 class InputSizeException(Exception):
     """Raised when the size of an input vector does not agree with the size of the input layer"""
@@ -51,7 +69,7 @@ class NeuralNetwork4: #4-layer neural network
         self.outputRaw = self.outputActivations
         print("Initialized NeuralNetwork4!")
 
-    def feedforward(self, input):
+    def feedforward(self, input) -> np.array:
         """Accepts a vector of input neuron values and returns a vector of output neuron values."""
         if len(input) != self.inputNeuronCount:
             raise InputSizeException(input, self.inputNeuronCount) #can remove this later to speed up
@@ -71,39 +89,39 @@ class NeuralNetwork4: #4-layer neural network
 
         return self.outputActivations
     
-    def getIterationCost(self):
+    def getIterationCost(self) -> None:
         """Returns the scalar cost of the last network feedforward."""
         return np.sum((self.outputActivations-self.outputTarget)**2)
 
-    def backpropagateError(self):
+    def backpropagateError(self) -> None:
         """Computes each layer's error vector via backpropagation."""
         self.outputError = 2*(self.outputActivations-self.outputTarget)*dSigmoid(self.outputRaw)
 
         self.h2Error = (self.outputWeights.transpose() @ self.outputError) * dSigmoid(self.h2Raw)
         self.h1Error = (self.h2Weights.transpose() @ self.h2Error) * dSigmoid(self.h1Raw)
     
-    def getBiasGradient(self):
+    def getBiasGradient(self) -> list[np.array]:
         """Calculates and returns 3 gradient-like vectors for the biases in the network."""
         biasGradientH1 = self.h1Error * self.h1Biases
         biasGradientH2 = self.h2Error * self.h2Biases
         biasGradientOutput = self.outputError * self.outputBiases
         return [biasGradientH1, biasGradientH2, biasGradientOutput]
     
-    def getWeightGradient(self):
+    def getWeightGradient(self) -> list[np.array]:
         """Calculates and returns 3 gradient-like matrices for the weights in the network."""
         weightGradientH1 = self.inputActivations * self.h1Error[:, np.newaxis]  #Equivalent of transpose, creates a meshgrid-like sum.
         weightGradientH2 = self.h1Activations * self.h2Error[:, np.newaxis]
         weightGradientOutput = self.h2Activations * self.outputError[:, np.newaxis]
         return [weightGradientH1, weightGradientH2, weightGradientOutput]
 
-    def adjustBiases(self, gradient, eta):
+    def adjustBiases(self, gradient, eta) -> None:
         """Adjusts the biases given some gradient-like vectors of the biases and some training rate eta. Gradient is a list of 3 vectors."""
         biasGradientH1, biasGradientH2, biasGradientOutput = gradient
         self.h1Biases -= (biasGradientH1)*eta
         self.h2Biases -= (biasGradientH2)*eta
         self.outputBiases -= (biasGradientOutput)*eta
 
-    def adjustWeights(self, gradient, eta):
+    def adjustWeights(self, gradient, eta) -> None:
         """Adjusts the weights given some gradient-like matrices of the weights and some training rate eta. Gradient is a list of 3 matrices."""
         weightGradientH1, weightGradientH2, weightGradientOutput = gradient
         self.h1Weights -= (weightGradientH1)*eta
@@ -111,37 +129,89 @@ class NeuralNetwork4: #4-layer neural network
         self.outputWeights -= (weightGradientOutput)*eta
     
 class NeuralNetwork4Trainer:
-    def __init__(self, network):
+    def __init__(self, network: NeuralNetwork4, defaultTrainingRate: float):
         self.network = network
+        self.globalCostHistory = []
+        self.samples = 0
+        self.defaultTrainingRate = defaultTrainingRate
+        #self.correct = 0
 
-    def initDataset(self):
-        
+        print("Initialized NeuralNetwork4Trainer!")
 
+    def setupTrainingData(self, data: list[TestImage], miniBatchSize: int) -> None:
+        """Accepts a list of data, and stores it as miniBatchSize random minibatches. miniBatchSize should cleanly divide data."""
+        data = data.rng.shuffle()
+        self.miniBatchSet = np.array.split(data, miniBatchSize)
+        self.miniBatchIdx = 0
     
+    def trainMiniBatch(self, miniBatch: list[TestImage], trainingRate: int) -> None:
+        """Begins training the network using loaded training data."""
+        print(f"Beginning training on minibatch {self.miniBatchIdx}!")
 
+        caseIdx = 0
+        correct = 0
+        localCostHistory = np.array()
+            
+        weightGradientH1History = np.array()
+        weightGradientH2History = np.array()
+        weightGradientOutputHistory = np.array()
+        biasGradientH1History = np.array()
+        biasGradientH2History = np.array()
+        biasGradientOutputHistory = np.array()
 
+        testCase: TestImage
+        for testCase in miniBatch:
+            self.network.outputTarget = np.zeros_like(self.network.outputTarget)
+            self.network.outputTarget[testCase.label] = 1
+
+            self.network.feedforward(testCase.data)
+            real = np.argmax(self.network.backpropagateError()) == testCase.label
+            if real:
+                correct += 1
+                pass
+
+            localCostHistory += self.network.getIterationCost()
+
+            biasGradient = self.network.getBiasGradient()
+            weightGradient = self.network.getWeightGradient()
+
+            weightGradientH1History += weightGradient[0]
+            weightGradientH2History += weightGradient[1]
+            weightGradientOutputHistory += weightGradient[2]
+            biasGradientH1History += biasGradient[0]
+            biasGradientH2History += biasGradient[1]
+            biasGradientOutputHistory += biasGradient[2]
+
+            print(f"Training... MB: {self.miniBatchIdx} \t Obj: {caseIdx} \t Cost: {self.network.getIterationCost()} \t Result: {real}")
+
+            caseIdx += 1
+            self.samples += 1
+
+        acc = correct/(len(miniBatch))
+        avgCost = np.mean(localCostHistory)
+        self.globalCostHistory.append(avgCost)
+
+        wH1d = np.mean(weightGradientH1History)
+        wH2d = np.mean(weightGradientH2History)
+        wOd = np.mean(weightGradientOutputHistory)
+        bH1d = np.mean(biasGradientH1History)
+        bH2d = np.mean(biasGradientH2History)
+        bOd = np.mean(biasGradientOutputHistory)
+
+        self.network.adjustWeights([wH1d, wH2d, wOd], eta=trainingRate)
+        self.network.adjustBiases([bH1d, bH2d, bOd], eta=trainingRate)
+
+        print(f"MB complete! \t Cost: {avgCost} \t Acc: {acc} \n")
+
+    def beginTraining(self) -> None:
+        """Begins training the network with each loaded minibatch."""
+        miniBatch: list[TestImage]
+        for miniBatch in self.miniBatchSet:
+            self.trainMiniBatch(miniBatch, self.defaultTrainingRate)
 
 
 #start_time = time.time()
-testNetwork = NeuralNetwork4(5, 6, 7, 8)
-testNetwork.outputTarget = np.array([0, 1, 0, 0, 0, 0, 0, 0])
-# print(f"Output EVec: {testNetwork.outputError}")
-# print(f"Hidden2 EVec: {testNetwork.h2Error}")
-# print(f"Hidden1 EVec: {testNetwork.h1Error}")
-
-#Example training:
-for i in range(1000):
-    testNetwork.feedforward(np.linspace(0.1, 0.9, 5))
-    testNetwork.backpropagateError()
-
-    biasGradient = testNetwork.getBiasGradient()
-    weightGradient = testNetwork.getWeightGradient()
-
-    testNetwork.adjustBiases(biasGradient, eta=0.01)
-    testNetwork.adjustWeights(weightGradient, eta=0.01)
-
-    print(f"Current cost: {testNetwork.getIterationCost()} \t {testNetwork.outputActivations}")
-
+testNetwork = NeuralNetwork4(4000, 80, 80, 8)
 # print("--- %s seconds ---" % (time.time() - start_time))
 
 
