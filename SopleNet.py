@@ -2,12 +2,17 @@ import numpy as np
 import time
 from dataclasses import dataclass
 import pickle
+import gc
 
 np.set_printoptions(edgeitems=30, linewidth=100000)
 rng = np.random.default_rng()
 
-CIFAR_DATA_TRAIN = []
-CIFAR_DATA_TEST = []
+CIFAR_DATA_TRAIN: np.array
+CIFAR_DATA_TEST: np.array
+CIFAR_LABELS = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+
+INPUT_LENGTH = 3072
+OUTPUT_LENGTH = 10
 
 @dataclass
 class TestImage:
@@ -19,8 +24,8 @@ def unpickle(file):
         dict = pickle.load(fo, encoding='bytes')
     return dict    
 
-CIFAR_DATA_TRAIN = unpickle("cifar10TRAIN")
-CIFAR_DATA_TEST = unpickle("cifar10TEST")
+CIFAR_DATA_TRAIN = np.array(unpickle("cifar10TRAIN"))
+CIFAR_DATA_TEST = np.array(unpickle("cifar10TEST"))
 
 class InputSizeException(Exception):
     """Raised when the size of an input vector does not agree with the size of the input layer"""
@@ -72,7 +77,7 @@ class NeuralNetwork4: #4-layer neural network
     def feedforward(self, input) -> np.array:
         """Accepts a vector of input neuron values and returns a vector of output neuron values."""
         if len(input) != self.inputNeuronCount:
-            raise InputSizeException(input, self.inputNeuronCount) #can remove this later to speed up
+            raise InputSizeException(len(input), self.inputNeuronCount) #can remove this later to speed up
         self.inputActivations = input
 
         #Calculate the first layer
@@ -133,31 +138,33 @@ class NeuralNetwork4Trainer:
         self.network = network
         self.globalCostHistory = []
         self.samples = 0
+        self.correct = 0
         self.defaultTrainingRate = defaultTrainingRate
-        #self.correct = 0
 
         print("Initialized NeuralNetwork4Trainer!")
 
-    def setupTrainingData(self, data: list[TestImage], miniBatchSize: int) -> None:
-        """Accepts a list of data, and stores it as miniBatchSize random minibatches. miniBatchSize should cleanly divide data."""
-        data = data.rng.shuffle()
-        self.miniBatchSet = np.array.split(data, miniBatchSize)
+    def setupTrainingData(self, data: list[TestImage], miniBatchCount: int) -> None:
+        """Accepts a list of data, and stores it as miniBatchCount random minibatches. miniBatchCount should cleanly divide data."""
+        rng.shuffle(data)
+        self.miniBatchSet = np.array_split(data, miniBatchCount)
+        self.miniBatchCount = len(self.miniBatchSet)
+        self.miniBatchSize = len(self.miniBatchSet[0])
         self.miniBatchIdx = 0
     
-    def trainMiniBatch(self, miniBatch: list[TestImage], trainingRate: int) -> None:
+    def __trainMiniBatch(self, miniBatch: list[TestImage], trainingRate: int) -> None:
         """Begins training the network using loaded training data."""
-        print(f"Beginning training on minibatch {self.miniBatchIdx}!")
+        #print(f"Beginning training on minibatch {self.miniBatchIdx}!")
 
         caseIdx = 0
         correct = 0
-        localCostHistory = np.array()
+        localCostHistory = []
             
-        weightGradientH1History = np.array()
-        weightGradientH2History = np.array()
-        weightGradientOutputHistory = np.array()
-        biasGradientH1History = np.array()
-        biasGradientH2History = np.array()
-        biasGradientOutputHistory = np.array()
+        weightGradientH1History = []
+        weightGradientH2History = []
+        weightGradientOutputHistory = []
+        biasGradientH1History = []
+        biasGradientH2History = []
+        biasGradientOutputHistory = []
 
         testCase: TestImage
         for testCase in miniBatch:
@@ -168,21 +175,21 @@ class NeuralNetwork4Trainer:
             real = np.argmax(self.network.backpropagateError()) == testCase.label
             if real:
                 correct += 1
-                pass
+                self.correct += 1
 
-            localCostHistory += self.network.getIterationCost()
+            localCostHistory.append(self.network.getIterationCost())
 
             biasGradient = self.network.getBiasGradient()
             weightGradient = self.network.getWeightGradient()
 
-            weightGradientH1History += weightGradient[0]
-            weightGradientH2History += weightGradient[1]
-            weightGradientOutputHistory += weightGradient[2]
-            biasGradientH1History += biasGradient[0]
-            biasGradientH2History += biasGradient[1]
-            biasGradientOutputHistory += biasGradient[2]
+            weightGradientH1History.append(weightGradient[0])
+            weightGradientH2History.append(weightGradient[1])
+            weightGradientOutputHistory.append(weightGradient[2])
+            biasGradientH1History.append(biasGradient[0])
+            biasGradientH2History.append(biasGradient[1])
+            biasGradientOutputHistory.append(biasGradient[2])
 
-            print(f"Training... MB: {self.miniBatchIdx} \t Obj: {caseIdx} \t Cost: {self.network.getIterationCost()} \t Result: {real}")
+            #print(f"Training... MB: {self.miniBatchIdx} \t Obj: {caseIdx} \t Cost: {self.network.getIterationCost()} \t Result: {real}")
 
             caseIdx += 1
             self.samples += 1
@@ -191,27 +198,37 @@ class NeuralNetwork4Trainer:
         avgCost = np.mean(localCostHistory)
         self.globalCostHistory.append(avgCost)
 
-        wH1d = np.mean(weightGradientH1History)
-        wH2d = np.mean(weightGradientH2History)
-        wOd = np.mean(weightGradientOutputHistory)
-        bH1d = np.mean(biasGradientH1History)
-        bH2d = np.mean(biasGradientH2History)
-        bOd = np.mean(biasGradientOutputHistory)
+        wH1d = np.mean(weightGradientH1History, axis=0)
+        wH2d = np.mean(weightGradientH2History, axis=0)
+        wOd = np.mean(weightGradientOutputHistory, axis=0)
+        bH1d = np.mean(biasGradientH1History, axis=0)
+        bH2d = np.mean(biasGradientH2History, axis=0)
+        bOd = np.mean(biasGradientOutputHistory, axis=0)
 
         self.network.adjustWeights([wH1d, wH2d, wOd], eta=trainingRate)
         self.network.adjustBiases([bH1d, bH2d, bOd], eta=trainingRate)
 
-        print(f"MB complete! \t Cost: {avgCost} \t Acc: {acc} \n")
+        print(f"Minibatch {self.miniBatchIdx}/{self.miniBatchCount} complete! \t Cost: {avgCost} \t Acc: {int(acc*100)}% \t Elapsed: {round(time.time() - start_time, 3)}s")
 
     def beginTraining(self) -> None:
         """Begins training the network with each loaded minibatch."""
         miniBatch: list[TestImage]
         for miniBatch in self.miniBatchSet:
-            self.trainMiniBatch(miniBatch, self.defaultTrainingRate)
+            self.__trainMiniBatch(miniBatch, self.defaultTrainingRate)
+            self.miniBatchIdx += 1
+        print(f"Training complete! \t Average accuracy:{self.samples/self.correct}")
 
 
-#start_time = time.time()
-testNetwork = NeuralNetwork4(4000, 80, 80, 8)
-# print("--- %s seconds ---" % (time.time() - start_time))
+layerH1NeuronCount = 50
+layerH2NeuronCount = 50
+trainingRate = 0.1
+
+cifarNetwork = NeuralNetwork4(INPUT_LENGTH, layerH1NeuronCount, layerH2NeuronCount, OUTPUT_LENGTH)
+cifarNetworkTrainer = NeuralNetwork4Trainer(cifarNetwork, trainingRate)
+cifarNetworkTrainer.setupTrainingData(CIFAR_DATA_TRAIN, (50000//1024))
+
+start_time = time.time()
+cifarNetworkTrainer.beginTraining()
+
 
 
