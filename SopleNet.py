@@ -110,6 +110,16 @@ class NeuralNetwork4: #4-layer neural network
         self.h2Weights -= (weightGradientH2)*eta
         self.outputWeights -= (weightGradientOutput)*eta
     
+class NeuralNetwork4Trainer:
+    def __init__(self, network):
+        self.network = network
+
+    def initDataset(self):
+        
+
+    
+
+
 
 
 #start_time = time.time()
