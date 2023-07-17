@@ -19,6 +19,9 @@ class TestImage:
     data: np.array
     label: int
 
+    def scaledData(self):
+        return ((self.data / 255)-0.5)
+
 def unpickle(file):
     with open(file, 'rb') as fo:
         dict = pickle.load(fo, encoding='bytes')
@@ -171,8 +174,10 @@ class NeuralNetwork4Trainer:
             self.network.outputTarget = np.zeros_like(self.network.outputTarget)
             self.network.outputTarget[testCase.label] = 1
 
-            self.network.feedforward(testCase.data)
-            real = np.argmax(self.network.backpropagateError()) == testCase.label
+            decision = np.argmax(self.network.feedforward(testCase.scaledData()))
+            self.network.backpropagateError()
+            
+            real = (decision == testCase.label)
             if real:
                 correct += 1
                 self.correct += 1
@@ -189,7 +194,8 @@ class NeuralNetwork4Trainer:
             biasGradientH2History.append(biasGradient[1])
             biasGradientOutputHistory.append(biasGradient[2])
 
-            #print(f"Training... MB: {self.miniBatchIdx} \t Obj: {caseIdx} \t Cost: {self.network.getIterationCost()} \t Result: {real}")
+            if (caseIdx == 1 and VERBOSE):
+                print(f"Training... MB: {self.miniBatchIdx} \t Obj: {caseIdx} \t Cost: {self.network.getIterationCost()} \t Result: {real} [{decision}R, {testCase.label}E]")
 
             caseIdx += 1
             self.samples += 1
@@ -216,16 +222,17 @@ class NeuralNetwork4Trainer:
         for miniBatch in self.miniBatchSet:
             self.__trainMiniBatch(miniBatch, self.defaultTrainingRate)
             self.miniBatchIdx += 1
-        print(f"Training complete! \t Average accuracy:{self.samples/self.correct}")
+        print(f"Training complete! \t Average accuracy:{round(100*self.correct/self.samples, 3)}%")
 
+VERBOSE = True
 
 layerH1NeuronCount = 50
 layerH2NeuronCount = 50
-trainingRate = 0.1
+trainingRate = 0.2
 
 cifarNetwork = NeuralNetwork4(INPUT_LENGTH, layerH1NeuronCount, layerH2NeuronCount, OUTPUT_LENGTH)
 cifarNetworkTrainer = NeuralNetwork4Trainer(cifarNetwork, trainingRate)
-cifarNetworkTrainer.setupTrainingData(CIFAR_DATA_TRAIN, (50000//1024))
+cifarNetworkTrainer.setupTrainingData(CIFAR_DATA_TRAIN, (50000//100))
 
 start_time = time.time()
 cifarNetworkTrainer.beginTraining()
