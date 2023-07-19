@@ -5,6 +5,9 @@ import pickle
 import gc
 
 np.set_printoptions(edgeitems=30, linewidth=100000)
+
+RNG_MEAN = 0
+RNG_STDDEV = 0.3
 rng = np.random.default_rng()
 
 CIFAR_DATA_TRAIN: np.array
@@ -20,7 +23,7 @@ class TestImage:
     label: int
 
     def scaledData(self):
-        return ((self.data / 255)-0.5)
+        return ((self.data / 255)-0.5)*2
 
 def unpickle(file):
     with open(file, 'rb') as fo:
@@ -50,14 +53,14 @@ class NeuralNetwork4: #4-layer neural network
         self.h2NeuronCount = h2NeuronCount
         self.outputNeuronCount = outputNeuronCount
 
-        self.h1Weights = rng.random((h1NeuronCount, inputNeuronCount))*2-1
-        self.h1Biases = rng.random((h1NeuronCount,))*2-1
+        self.h1Weights = rng.normal(RNG_MEAN, RNG_STDDEV, (h1NeuronCount, inputNeuronCount))
+        self.h1Biases = rng.normal(RNG_MEAN, RNG_STDDEV, (h1NeuronCount,))
 
-        self.h2Weights = rng.random((h2NeuronCount, h1NeuronCount))*2-1
-        self.h2Biases = rng.random((h2NeuronCount,))*2-1
+        self.h2Weights = rng.normal(RNG_MEAN, RNG_STDDEV, (h2NeuronCount, h1NeuronCount))
+        self.h2Biases = rng.normal(RNG_MEAN, RNG_STDDEV, (h2NeuronCount,))
 
-        self.outputWeights = rng.random((outputNeuronCount, h2NeuronCount))*2-1
-        self.outputBiases = rng.random((outputNeuronCount,))*2-1
+        self.outputWeights = rng.normal(RNG_MEAN, RNG_STDDEV, (outputNeuronCount, h2NeuronCount))
+        self.outputBiases = rng.normal(RNG_MEAN, RNG_STDDEV, (outputNeuronCount,))
 
         #Keep initialized to save time
         self.inputActivations = np.zeros((inputNeuronCount,))
@@ -103,9 +106,9 @@ class NeuralNetwork4: #4-layer neural network
 
     def backpropagateError(self) -> None:
         """Computes each layer's error vector via backpropagation."""
-        self.outputError = 2*(self.outputActivations-self.outputTarget)*dSigmoid(self.outputRaw)
+        self.outputError = -(self.outputTarget-self.outputActivations) #output layer error is special
 
-        self.h2Error = (self.outputWeights.transpose() @ self.outputError) * dSigmoid(self.h2Raw)
+        self.h2Error = (self.outputWeights.transpose() @ self.outputError) * dSigmoid(self.h2Raw) #each L is based on L+1
         self.h1Error = (self.h2Weights.transpose() @ self.h2Error) * dSigmoid(self.h1Raw)
     
     def getBiasGradient(self) -> list[np.array]:
@@ -223,12 +226,49 @@ class NeuralNetwork4Trainer:
             self.__trainMiniBatch(miniBatch, self.defaultTrainingRate)
             self.miniBatchIdx += 1
         print(f"Training complete! \t Average accuracy:{round(100*self.correct/self.samples, 3)}%")
+    
+    def __testMiniBatch(self, testSet: list[TestImage]):
+        caseIdx = 0
+        correct = 0
+        samples = len(testSet)
+        correctSet = np.zeros(10,)
+        sampleSet = np.zeros(10,)
+        predSet = np.zeros(10,)
 
-VERBOSE = True
+        print("Testing in progress...")
+        print(("o")*20)
 
-layerH1NeuronCount = 50
-layerH2NeuronCount = 50
-trainingRate = 0.2
+        for item in testSet:
+
+            prediction = np.argmax(self.network.feedforward(item.scaledData()))
+            if (prediction == item.label):
+                correct += 1
+                correctSet[item.label] += 1
+
+            if (caseIdx % (samples // 20) == 0):
+                print("o", end="") #progress meter
+
+            caseIdx += 1
+            sampleSet[item.label] += 1
+            predSet[prediction] += 1
+        
+        print("\nTesting complete!")
+        print(f"Per-category accuracy: \t \t {correctSet*100 / sampleSet}")
+        print(f"Per-category predictions: \t {predSet*100 / samples}")
+        print(f"Total accuracy: \t \t {correct} samples correct out of {samples} samples [{correct*100/samples}%]")
+    
+    def beginTesting(self, data: list[TestImage]) -> None:
+        """Begins testing the network against the specified testset. 
+        Only accuracy is reported, no backpropagation is performed.
+        Does not affect the network; is idempotent."""
+        self.__testMiniBatch(data)
+
+
+VERBOSE = False
+
+layerH1NeuronCount = 80
+layerH2NeuronCount = 80
+trainingRate = 0.05
 
 cifarNetwork = NeuralNetwork4(INPUT_LENGTH, layerH1NeuronCount, layerH2NeuronCount, OUTPUT_LENGTH)
 cifarNetworkTrainer = NeuralNetwork4Trainer(cifarNetwork, trainingRate)
@@ -236,6 +276,7 @@ cifarNetworkTrainer.setupTrainingData(CIFAR_DATA_TRAIN, (50000//100))
 
 start_time = time.time()
 cifarNetworkTrainer.beginTraining()
+cifarNetworkTrainer.beginTesting(CIFAR_DATA_TEST)
 
 
 
