@@ -2,9 +2,14 @@ import numpy as np
 import time
 from dataclasses import dataclass
 import pickle
-import gc
+import csv
+import os
+from datetime import datetime
 
 np.set_printoptions(edgeitems=30, linewidth=100000)
+
+TIMESTAMP = datetime.now().strftime("%Y%b%d_%Hh%Mm%Ss")
+os.makedirs(f"./results/{TIMESTAMP}/")
 
 RNG_MEAN = 0
 RNG_STDDEV = 1
@@ -152,14 +157,11 @@ class NeuralNetwork4Trainer:
 
         print("Initialized NeuralNetwork4Trainer!")
 
-    def setupTrainingData(self, data: list[TestImage], miniBatchCount: int) -> None:
-        """Accepts a list of data, and stores it as miniBatchCount random minibatches. miniBatchCount should cleanly divide data."""
-        rng.shuffle(data)
-        self.miniBatchSet = np.array_split(data, miniBatchCount)
-        self.miniBatchCount = len(self.miniBatchSet)
-        self.miniBatchSize = len(self.miniBatchSet[0])
-        self.miniBatchIdx = 0
-       
+    def setupTrainingData(self, data: list[TestImage]) -> None:
+        """Accepts a list of data, and stores it in the trainer."""
+        self.trainingData = data
+        self.trainingDataSize = len(data)
+
     def __trainMiniBatch(self, miniBatch: list[TestImage], trainingRate: int) -> None:
         """Begins training the network using loaded training data."""
         #print(f"Beginning training on minibatch {self.miniBatchIdx}!")
@@ -187,6 +189,7 @@ class NeuralNetwork4Trainer:
             if real:
                 correct += 1
                 self.correct += 1
+                self.epochCorrect += 1
 
             localCostHistory.append(self.network.getIterationCost())
 
@@ -200,15 +203,17 @@ class NeuralNetwork4Trainer:
             biasGradientH2History.append(biasGradient[1])
             biasGradientOutputHistory.append(biasGradient[2])
 
-            if (caseIdx == 1 and VERBOSE):
+            if (caseIdx == 1 and SUPER_VERBOSE):
                 print(f"Training... MB: {self.miniBatchIdx} \t Obj: {caseIdx} \t Cost: {self.network.getIterationCost()} \t Result: {real} [{decision}R, {testCase.label}E]")
-
+            
             caseIdx += 1
             self.samples += 1
+            self.epochSamples += 1
 
         acc = correct/(len(miniBatch))
         avgCost = np.mean(localCostHistory)
         self.globalCostHistory.append(avgCost)
+        self.epochCostSum += avgCost
 
         wH1d = np.mean(weightGradientH1History, axis=0)
         wH2d = np.mean(weightGradientH2History, axis=0)
@@ -220,19 +225,38 @@ class NeuralNetwork4Trainer:
         self.network.adjustWeights([wH1d, wH2d, wOd], eta=trainingRate)
         self.network.adjustBiases([bH1d, bH2d, bOd], eta=trainingRate)
 
-        print(f"Minibatch {self.miniBatchIdx}/{self.miniBatchCount} complete! \t Cost: {avgCost} \t Acc: {int(acc*100)}% \t Elapsed: {round(time.time() - start_time, 3)}s")
+        if VERBOSE:
+            print(f"Minibatch {self.miniBatchIdx}/{self.miniBatchCount} complete! \t Cost: {avgCost} \t Acc: {int(acc*100)}% \t Elapsed: {round(time.time() - start_time, 3)}s")
         
+    def generateMiniBatches(self, miniBatchSize):
+        rng.shuffle(self.trainingData)
+        self.miniBatchSet = np.array_split(self.trainingData, (self.trainingDataSize // miniBatchSize))
+        self.miniBatchSize = len(self.miniBatchSet[0])
+        self.miniBatchCount = len(self.miniBatchSet)
+        self.miniBatchIdx = 0
 
-    def beginTraining(self, epochs: int) -> None:
+    def beginTraining(self, epochCount: int, miniBatchSize: int) -> None:
         """Begins training the network with each loaded minibatch."""
-        miniBatch: list[TestImage]
-        for miniBatch in self.miniBatchSet:
-            self.__trainMiniBatch(miniBatch, self.defaultTrainingRate)
-            self.miniBatchIdx += 1
+
+        self.currentEpoch = 1
+        while self.currentEpoch <= epochCount:
+            if (not VERBOSE and not SUPER_VERBOSE):
+                print(f"Beginning Epoch {self.currentEpoch}/{epochCount}... ", end="")
+            self.generateMiniBatches(miniBatchSize)
+            self.epochSamples = 0
+            self.epochCorrect = 0
+            self.epochCostSum = 0
+            for miniBatch in self.miniBatchSet:
+                self.miniBatchIdx += 1
+                self.__trainMiniBatch(miniBatch, self.defaultTrainingRate)
+            print(f"done. \t Average accuracy:{round(100*self.epochCorrect/self.epochSamples, 3)}% \t Elapsed: {round(time.time() - start_time, 3)}s")
+            epochCost = self.epochCostSum / self.miniBatchCount
+            logEpoch(self.currentEpoch, epochCount, round(epochCost, 4), round(100*self.epochCorrect/self.epochSamples, 3), round(time.time() - start_time, 3))
+            self.currentEpoch += 1
         print(f"Training complete! \t Average accuracy:{round(100*self.correct/self.samples, 3)}%")
         self.tMax = round(time.time() - start_time, 3)
     
-    def __testMiniBatch(self, testSet: list[TestImage]):
+    def __testNetwork(self, testSet: list[TestImage]):
         caseIdx = 0
         correct = 0
         testSamples = len(testSet)
@@ -240,7 +264,7 @@ class NeuralNetwork4Trainer:
         sampleSet = np.zeros(10,)
         predSet = np.zeros(10,)
 
-        print(f"Testing in progress... \t [ETA: {round(self.tMax * (testSamples / self.samples), 1)}s]")
+        print(f"\n\n\nTesting in progress...")
 
         for item in testSet:
 
@@ -258,28 +282,51 @@ class NeuralNetwork4Trainer:
         print(f"Per-category accuracy: \t \t {correctSet*100 / sampleSet}")
         print(f"Per-category predictions: \t {predSet*100 / testSamples}")
         print(f"Total accuracy: \t \t {correct} samples correct out of {testSamples} samples [{correct*100/testSamples}%]")
+        with open(f"./results/{TIMESTAMP}/TEST_LOG.csv", "w", newline="\n") as file:
+            file.write("Testing complete! \n")
+            file.write(f"Per-category accuracy: \t \t {correctSet*100 / sampleSet} \n")
+            file.write(f"Per-category predictions: \t {predSet*100 / testSamples} \n")
+            file.write(f"Total accuracy: \t \t {correct} samples correct out of {testSamples} samples [{correct*100/testSamples}%] \n")
     
     def beginTesting(self, data: list[TestImage]) -> None:
         """Begins testing the network against the specified testset. 
         Only accuracy is reported, no backpropagation is performed.
         Does not affect the network; is idempotent."""
-        self.__testMiniBatch(data)
+        self.__testNetwork(data)
 
+def setupEpochLogging():
+    with open(f"./results/{TIMESTAMP}/trainingLog.csv", "a+", newline="\n") as csvfile:
+        sopleWriter = csv.writer(csvfile, delimiter = ' ')
+        sopleWriter.writerow(["Epoch", "MaxEpoch", "AvgCost", "EpochAcc", "Elapsed"])
+    csvfile.close()
 
-VERBOSE = False
+def logEpoch(epoch, maxEpoch, avgCost, epochAcc, elapsed):
+    with open(f"./results/{TIMESTAMP}/trainingLog.csv", "a+", newline="\n") as csvfile:
+        sopleWriter = csv.writer(csvfile, delimiter = ' ')
+        sopleWriter.writerow([epoch, maxEpoch, avgCost, epochAcc, elapsed])
+    csvfile.close()
 
-layerH1NeuronCount = 80
-layerH2NeuronCount = 80
-trainingRate = 0.1
+VERBOSE = True
+SUPER_VERBOSE = False
+
+layerH1NeuronCount = 2
+layerH2NeuronCount = 2
+trainingRate = 0.005
 miniBatchSize = 100
+epochCount = 3
+
+setupEpochLogging()
 
 cifarNetwork = NeuralNetwork4(INPUT_LENGTH, layerH1NeuronCount, layerH2NeuronCount, OUTPUT_LENGTH)
 cifarNetworkTrainer = NeuralNetwork4Trainer(cifarNetwork, trainingRate)
-cifarNetworkTrainer.setupTrainingData(CIFAR_DATA_TRAIN, miniBatchSize)
+cifarNetworkTrainer.setupTrainingData(CIFAR_DATA_TRAIN)
 
 start_time = time.time()
-cifarNetworkTrainer.beginTraining()
+cifarNetworkTrainer.beginTraining(epochCount, miniBatchSize)
 cifarNetworkTrainer.beginTesting(CIFAR_DATA_TEST)
 
-
+with open(f"./results/{TIMESTAMP}/cifarModelTrained", "wb") as file:
+    pickle.dump(cifarNetworkTrainer, file=file)
+with open(f"./results/{TIMESTAMP}/hyperparameters", "wb") as file:
+    pickle.dump([RNG_MEAN, RNG_STDDEV, layerH1NeuronCount, layerH2NeuronCount, trainingRate, miniBatchSize, epochCount], file=file)
 
