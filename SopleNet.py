@@ -47,7 +47,6 @@ class InputSizeException(Exception):
     def __init__(self, input, realInput):
         super().__init__(f"Input vector was length {input}, but length {realInput} was expected")
 
-
 def sigmoid(x):
     """The sigmoid function, a 'squishification' function for activations."""
     return 1 / (1 + np.exp(-x))
@@ -148,6 +147,9 @@ class NeuralNetwork4: #4-layer neural network
         self.h1Weights -= (weightGradientH1)*eta
         self.h2Weights -= (weightGradientH2)*eta
         self.outputWeights -= (weightGradientOutput)*eta
+    
+    def logParameters(self) -> 'NeuralNetwork4File': #string name solves circular dependency
+        return NeuralNetwork4File(self)
     
 class NeuralNetwork4Trainer:
     def __init__(self, network: NeuralNetwork4, defaultTrainingRate: float):
@@ -251,6 +253,7 @@ class NeuralNetwork4Trainer:
                 self.miniBatchIdx += 1
                 self.__trainMiniBatch(miniBatch, self.defaultTrainingRate)
             self.logEpochComplete()
+            self.saveNetworkState()
         self.logTrainingComplete()
     
     def getTestResult(self, testData: TestImage):
@@ -294,14 +297,33 @@ class NeuralNetwork4Trainer:
     def logTestingComplete(self, correct, correctSet, predSet, numSamples):
         logging.logTestingComplete(correct, correctSet, predSet, numSamples)
 
+    def saveNetworkState(self):
+        NeuralNetwork4File(self.network, self.currentEpoch).logToFile()
+    
+class NeuralNetwork4File():
+    def __init__(self, fullNetwork: NeuralNetwork4, epoch):
+        self.inputNeuronCount = INPUT_LENGTH
+        self.h1NeuronCount = len(fullNetwork.h1Biases)
+        self.h2NeuronCount = len(fullNetwork.h2Biases)
+        self.outputNeuronCount = OUTPUT_LENGTH
+        self.h1Weights = fullNetwork.h1Weights
+        self.h1Biases = fullNetwork.h1Biases
+        self.h2Weights = fullNetwork.h2Weights
+        self.h2Biases = fullNetwork.h2Biases
+        self.outputWeights = fullNetwork.outputWeights
+        self.outputBiases = fullNetwork.outputBiases
+        self.epoch = epoch
+    
+    def logToFile(self):
+        repickle(f"./results/{logging.F_TIMESTAMP}/trained/modelEpoch{self.epoch}", self)
 
 LOGGING_LEVEL = 2
 
 RNG_MEAN = 0
 RNG_STDDEV = 1
 
-layerH1NeuronCount = 12
-layerH2NeuronCount = 12
+layerH1NeuronCount = 6
+layerH2NeuronCount = 6
 trainingRate = 0.005
 miniBatchSize = 100
 epochCount = 2
@@ -316,5 +338,5 @@ start_time = time.time()
 cifarNetworkTrainer.beginTraining(epochCount, miniBatchSize)
 cifarNetworkTrainer.beginTesting(CIFAR_DATA_TEST)
 
-repickle(f"./results/{logging.F_TIMESTAMP}/cifarModelTrained", cifarNetworkTrainer)
+#repickle(f"./results/{logging.F_TIMESTAMP}/cifarModelTrained", cifarNetworkTrainer)
 repickle(f"./results/{logging.F_TIMESTAMP}/hyperparameters", [RNG_MEAN, RNG_STDDEV, layerH1NeuronCount, layerH2NeuronCount, trainingRate, miniBatchSize, epochCount])
