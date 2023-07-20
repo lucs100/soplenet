@@ -2,17 +2,12 @@ import numpy as np
 import time
 from dataclasses import dataclass
 import pickle
-import csv
-import os
-from datetime import datetime
+import SopleNetLogging as logging
 
 np.set_printoptions(edgeitems=30, linewidth=100000)
 
-TIMESTAMP = datetime.now().strftime("%Y%b%d_%Hh%Mm%Ss")
-os.makedirs(f"./results/{TIMESTAMP}/")
+START_TIME = time.time()
 
-RNG_MEAN = 0
-RNG_STDDEV = 1
 rng = np.random.default_rng()
 
 CIFAR_DATA_TRAIN: np.array
@@ -33,7 +28,13 @@ class TestImage:
 def unpickle(file):
     with open(file, 'rb') as fo:
         dict = pickle.load(fo, encoding='bytes')
-    return dict    
+    fo.close()
+    return dict
+
+def repickle(filepath, data):
+    with open(filepath, 'wb') as file:
+        pickle.dump(data, file=file)
+    file.close()
 
 CIFAR_DATA_TRAIN = np.array(unpickle("cifar10TRAIN"))
 CIFAR_DATA_TEST = np.array(unpickle("cifar10TEST"))
@@ -45,6 +46,7 @@ class InputSizeException(Exception):
     """Raised when the size of an input vector does not agree with the size of the input layer"""
     def __init__(self, input, realInput):
         super().__init__(f"Input vector was length {input}, but length {realInput} was expected")
+
 
 def sigmoid(x):
     """The sigmoid function, a 'squishification' function for activations."""
@@ -162,6 +164,7 @@ class NeuralNetwork4Trainer:
         self.trainingData = data
         self.trainingDataSize = len(data)
 
+
     def __trainMiniBatch(self, miniBatch: list[TestImage], trainingRate: int) -> None:
         """Begins training the network using loaded training data."""
         #print(f"Beginning training on minibatch {self.miniBatchIdx}!")
@@ -189,9 +192,10 @@ class NeuralNetwork4Trainer:
             if real:
                 correct += 1
                 self.correct += 1
-                self.epochCorrect += 1
 
-            localCostHistory.append(self.network.getIterationCost())
+            caseCost = self.network.getIterationCost()
+
+            localCostHistory.append(caseCost)
 
             biasGradient = self.network.getBiasGradient()
             weightGradient = self.network.getWeightGradient()
@@ -203,17 +207,17 @@ class NeuralNetwork4Trainer:
             biasGradientH2History.append(biasGradient[1])
             biasGradientOutputHistory.append(biasGradient[2])
 
-            if (caseIdx == 1 and SUPER_VERBOSE):
-                print(f"Training... MB: {self.miniBatchIdx} \t Obj: {caseIdx} \t Cost: {self.network.getIterationCost()} \t Result: {real} [{decision}R, {testCase.label}E]")
-            
+            if (LOGGING_LEVEL > 2):
+                self.logPointComplete(caseIdx, caseCost, real, decision, testCase.label)
+                
             caseIdx += 1
             self.samples += 1
-            self.epochSamples += 1
 
-        acc = correct/(len(miniBatch))
+        acc = int(correct/(len(miniBatch))*100)
         avgCost = np.mean(localCostHistory)
         self.globalCostHistory.append(avgCost)
         self.epochCostSum += avgCost
+        self.epochCorrect += self.correct
 
         wH1d = np.mean(weightGradientH1History, axis=0)
         wH2d = np.mean(weightGradientH2History, axis=0)
@@ -225,97 +229,84 @@ class NeuralNetwork4Trainer:
         self.network.adjustWeights([wH1d, wH2d, wOd], eta=trainingRate)
         self.network.adjustBiases([bH1d, bH2d, bOd], eta=trainingRate)
 
-        if VERBOSE:
-            print(f"Minibatch {self.miniBatchIdx}/{self.miniBatchCount} complete! \t Cost: {avgCost} \t Acc: {int(acc*100)}% \t Elapsed: {round(time.time() - start_time, 3)}s")
-        
+        if LOGGING_LEVEL > 1 :
+            self.logMinibatchComplete(avgCost, acc)
+
     def generateMiniBatches(self, miniBatchSize):
         rng.shuffle(self.trainingData)
         self.miniBatchSet = np.array_split(self.trainingData, (self.trainingDataSize // miniBatchSize))
         self.miniBatchSize = len(self.miniBatchSet[0])
         self.miniBatchCount = len(self.miniBatchSet)
-        self.miniBatchIdx = 0
+        self.miniBatchIdx = 0  
 
     def beginTraining(self, epochCount: int, miniBatchSize: int) -> None:
         """Begins training the network with each loaded minibatch."""
-
-        self.currentEpoch = 1
-        while self.currentEpoch <= epochCount:
-            if (not VERBOSE and not SUPER_VERBOSE):
-                print(f"Beginning Epoch {self.currentEpoch}/{epochCount}... ", end="")
+        print("Beginning training...")
+        self.epochCount = epochCount
+        for self.currentEpoch in range(1, epochCount+1):
             self.generateMiniBatches(miniBatchSize)
-            self.epochSamples = 0
             self.epochCorrect = 0
             self.epochCostSum = 0
             for miniBatch in self.miniBatchSet:
                 self.miniBatchIdx += 1
                 self.__trainMiniBatch(miniBatch, self.defaultTrainingRate)
-            print(f"done. \t Average accuracy:{round(100*self.epochCorrect/self.epochSamples, 3)}% \t Elapsed: {round(time.time() - start_time, 3)}s")
-            epochCost = self.epochCostSum / self.miniBatchCount
-            logEpoch(self.currentEpoch, epochCount, round(epochCost, 4), round(100*self.epochCorrect/self.epochSamples, 3), round(time.time() - start_time, 3))
-            self.currentEpoch += 1
-        print(f"Training complete! \t Average accuracy:{round(100*self.correct/self.samples, 3)}%")
-        self.tMax = round(time.time() - start_time, 3)
+            self.logEpochComplete()
+        self.logTrainingComplete()
     
-    def __testNetwork(self, testSet: list[TestImage]):
-        caseIdx = 0
-        correct = 0
-        testSamples = len(testSet)
-        correctSet = np.zeros(10,)
-        sampleSet = np.zeros(10,)
-        predSet = np.zeros(10,)
+    def getTestResult(self, testData: TestImage):
+        return np.argmax(self.network.feedforward(testData.scaledData()))
 
-        print(f"\n\n\nTesting in progress...")
+    def __testNetwork(self, testSet: list[TestImage]):
+        correctSet = np.zeros_like(CIFAR_LABELS, dtype=int)
+        predSet = np.zeros_like(CIFAR_LABELS, dtype=int)
+
+        print("Beginning testing...")
 
         for item in testSet:
-
-            prediction = np.argmax(self.network.feedforward(item.scaledData()))
-            if (prediction == item.label):
-                correct += 1
+            result = self.getTestResult(item)
+            if result == item.label:
                 correctSet[item.label] += 1
-
-            caseIdx += 1
-            sampleSet[item.label] += 1
-            predSet[prediction] += 1
+            predSet[result] += 1
         
-        np.set_printoptions(formatter={'float': '{: 0.2f}'.format})
-        print("\nTesting complete!")
-        print(f"Per-category accuracy: \t \t {correctSet*100 / sampleSet}")
-        print(f"Per-category predictions: \t {predSet*100 / testSamples}")
-        print(f"Total accuracy: \t \t {correct} samples correct out of {testSamples} samples [{correct*100/testSamples}%]")
-        with open(f"./results/{TIMESTAMP}/TEST_LOG.csv", "w", newline="\n") as file:
-            file.write("Testing complete! \n")
-            file.write(f"Per-category accuracy: \t \t {correctSet*100 / sampleSet} \n")
-            file.write(f"Per-category predictions: \t {predSet*100 / testSamples} \n")
-            file.write(f"Total accuracy: \t \t {correct} samples correct out of {testSamples} samples [{correct*100/testSamples}%] \n")
+        correct = sum(correctSet)
+        self.logTestingComplete(correct, correctSet, predSet, len(testSet))
     
     def beginTesting(self, data: list[TestImage]) -> None:
         """Begins testing the network against the specified testset. 
         Only accuracy is reported, no backpropagation is performed.
         Does not affect the network; is idempotent."""
         self.__testNetwork(data)
+                    
+    def logPointComplete(self, caseIdx, cost, real, decision, label):
+        logging.logPointComplete(self.miniBatchIdx, caseIdx, cost, real, decision, label)
 
-def setupEpochLogging():
-    with open(f"./results/{TIMESTAMP}/trainingLog.csv", "a+", newline="\n") as csvfile:
-        sopleWriter = csv.writer(csvfile, delimiter = ' ')
-        sopleWriter.writerow(["Epoch", "MaxEpoch", "AvgCost", "EpochAcc", "Elapsed"])
-    csvfile.close()
+    def logMinibatchComplete(self, avgCost, acc):
+        logging.logMinibatchComplete(self.miniBatchIdx, self.miniBatchCount, avgCost, acc)
+    
+    def logEpochComplete(self):
+        logging.logEpochComplete(self.currentEpoch, self.epochCount, 
+            round((self.epochCostSum / self.miniBatchCount), 4), 
+            self.epochCorrect, self.trainingDataSize)
 
-def logEpoch(epoch, maxEpoch, avgCost, epochAcc, elapsed):
-    with open(f"./results/{TIMESTAMP}/trainingLog.csv", "a+", newline="\n") as csvfile:
-        sopleWriter = csv.writer(csvfile, delimiter = ' ')
-        sopleWriter.writerow([epoch, maxEpoch, avgCost, epochAcc, elapsed])
-    csvfile.close()
+    def logTrainingComplete(self):
+        logging.logTrainingComplete(self.correct, self.samples)
+    
+    def logTestingComplete(self, correct, correctSet, predSet, numSamples):
+        logging.logTestingComplete(correct, correctSet, predSet, numSamples)
 
-VERBOSE = True
-SUPER_VERBOSE = False
 
-layerH1NeuronCount = 2
-layerH2NeuronCount = 2
+LOGGING_LEVEL = 2
+
+RNG_MEAN = 0
+RNG_STDDEV = 1
+
+layerH1NeuronCount = 12
+layerH2NeuronCount = 12
 trainingRate = 0.005
 miniBatchSize = 100
-epochCount = 3
+epochCount = 2
 
-setupEpochLogging()
+logging.initEpochLogging(LOGGING_LEVEL)
 
 cifarNetwork = NeuralNetwork4(INPUT_LENGTH, layerH1NeuronCount, layerH2NeuronCount, OUTPUT_LENGTH)
 cifarNetworkTrainer = NeuralNetwork4Trainer(cifarNetwork, trainingRate)
@@ -325,8 +316,5 @@ start_time = time.time()
 cifarNetworkTrainer.beginTraining(epochCount, miniBatchSize)
 cifarNetworkTrainer.beginTesting(CIFAR_DATA_TEST)
 
-with open(f"./results/{TIMESTAMP}/cifarModelTrained", "wb") as file:
-    pickle.dump(cifarNetworkTrainer, file=file)
-with open(f"./results/{TIMESTAMP}/hyperparameters", "wb") as file:
-    pickle.dump([RNG_MEAN, RNG_STDDEV, layerH1NeuronCount, layerH2NeuronCount, trainingRate, miniBatchSize, epochCount], file=file)
-
+repickle(f"./results/{logging.F_TIMESTAMP}/cifarModelTrained", cifarNetworkTrainer)
+repickle(f"./results/{logging.F_TIMESTAMP}/hyperparameters", [RNG_MEAN, RNG_STDDEV, layerH1NeuronCount, layerH2NeuronCount, trainingRate, miniBatchSize, epochCount])
