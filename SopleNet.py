@@ -7,7 +7,7 @@ import gc
 np.set_printoptions(edgeitems=30, linewidth=100000)
 
 RNG_MEAN = 0
-RNG_STDDEV = 0.3
+RNG_STDDEV = 1
 rng = np.random.default_rng()
 
 CIFAR_DATA_TRAIN: np.array
@@ -23,7 +23,7 @@ class TestImage:
     label: int
 
     def scaledData(self):
-        return ((self.data / 255)-0.5)*2
+        return (self.data / 255)
 
 def unpickle(file):
     with open(file, 'rb') as fo:
@@ -32,6 +32,9 @@ def unpickle(file):
 
 CIFAR_DATA_TRAIN = np.array(unpickle("cifar10TRAIN"))
 CIFAR_DATA_TEST = np.array(unpickle("cifar10TEST"))
+
+CIFAR_DATA_TRAIN_SAMPLES = len(CIFAR_DATA_TRAIN)
+CIFAR_DATA_TEST_SAMPLES = len(CIFAR_DATA_TEST)
 
 class InputSizeException(Exception):
     """Raised when the size of an input vector does not agree with the size of the input layer"""
@@ -156,7 +159,7 @@ class NeuralNetwork4Trainer:
         self.miniBatchCount = len(self.miniBatchSet)
         self.miniBatchSize = len(self.miniBatchSet[0])
         self.miniBatchIdx = 0
-    
+       
     def __trainMiniBatch(self, miniBatch: list[TestImage], trainingRate: int) -> None:
         """Begins training the network using loaded training data."""
         #print(f"Beginning training on minibatch {self.miniBatchIdx}!")
@@ -218,25 +221,26 @@ class NeuralNetwork4Trainer:
         self.network.adjustBiases([bH1d, bH2d, bOd], eta=trainingRate)
 
         print(f"Minibatch {self.miniBatchIdx}/{self.miniBatchCount} complete! \t Cost: {avgCost} \t Acc: {int(acc*100)}% \t Elapsed: {round(time.time() - start_time, 3)}s")
+        
 
-    def beginTraining(self) -> None:
+    def beginTraining(self, epochs: int) -> None:
         """Begins training the network with each loaded minibatch."""
         miniBatch: list[TestImage]
         for miniBatch in self.miniBatchSet:
             self.__trainMiniBatch(miniBatch, self.defaultTrainingRate)
             self.miniBatchIdx += 1
         print(f"Training complete! \t Average accuracy:{round(100*self.correct/self.samples, 3)}%")
+        self.tMax = round(time.time() - start_time, 3)
     
     def __testMiniBatch(self, testSet: list[TestImage]):
         caseIdx = 0
         correct = 0
-        samples = len(testSet)
+        testSamples = len(testSet)
         correctSet = np.zeros(10,)
         sampleSet = np.zeros(10,)
         predSet = np.zeros(10,)
 
-        print("Testing in progress...")
-        print(("o")*20)
+        print(f"Testing in progress... \t [ETA: {round(self.tMax * (testSamples / self.samples), 1)}s]")
 
         for item in testSet:
 
@@ -245,17 +249,15 @@ class NeuralNetwork4Trainer:
                 correct += 1
                 correctSet[item.label] += 1
 
-            if (caseIdx % (samples // 20) == 0):
-                print("o", end="") #progress meter
-
             caseIdx += 1
             sampleSet[item.label] += 1
             predSet[prediction] += 1
         
+        np.set_printoptions(formatter={'float': '{: 0.2f}'.format})
         print("\nTesting complete!")
         print(f"Per-category accuracy: \t \t {correctSet*100 / sampleSet}")
-        print(f"Per-category predictions: \t {predSet*100 / samples}")
-        print(f"Total accuracy: \t \t {correct} samples correct out of {samples} samples [{correct*100/samples}%]")
+        print(f"Per-category predictions: \t {predSet*100 / testSamples}")
+        print(f"Total accuracy: \t \t {correct} samples correct out of {testSamples} samples [{correct*100/testSamples}%]")
     
     def beginTesting(self, data: list[TestImage]) -> None:
         """Begins testing the network against the specified testset. 
@@ -268,11 +270,12 @@ VERBOSE = False
 
 layerH1NeuronCount = 80
 layerH2NeuronCount = 80
-trainingRate = 0.05
+trainingRate = 0.1
+miniBatchSize = 100
 
 cifarNetwork = NeuralNetwork4(INPUT_LENGTH, layerH1NeuronCount, layerH2NeuronCount, OUTPUT_LENGTH)
 cifarNetworkTrainer = NeuralNetwork4Trainer(cifarNetwork, trainingRate)
-cifarNetworkTrainer.setupTrainingData(CIFAR_DATA_TRAIN, (50000//100))
+cifarNetworkTrainer.setupTrainingData(CIFAR_DATA_TRAIN, miniBatchSize)
 
 start_time = time.time()
 cifarNetworkTrainer.beginTraining()
