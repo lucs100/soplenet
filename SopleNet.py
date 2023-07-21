@@ -314,102 +314,16 @@ class NeuralNetwork4File():
     def logToFile(self):
         repickle(f"./results/{logging.F_TIMESTAMP}/trained/modelEpoch{self.epoch}", self)
 
-LOGGING_LEVEL = 1
+LOGGING_LEVEL = 3
 
 RNG_MEAN = 0
 RNG_STDDEV = 1
 
-layerH1NeuronCount = 150
-layerH2NeuronCount = 150
-trainingRate = 0.01
+layerH1NeuronCount = 180
+layerH2NeuronCount = 180
+trainingRate = 0.025
 miniBatchSize = 100
-epochCount = 100
-
-logging.initEpochLogging(LOGGING_LEVEL)
-        print("Beginning training...")
-        self.epochCount = epochCount
-        for self.currentEpoch in range(1, epochCount+1):
-            self.generateMiniBatches(miniBatchSize)
-            self.epochCorrect = 0
-            self.epochCostSum = 0
-            for miniBatch in self.miniBatchSet:
-                self.miniBatchIdx += 1
-                self.__trainMiniBatch(miniBatch, self.defaultTrainingRate)
-            self.logEpochComplete()
-            self.saveNetworkState()
-        self.logTrainingComplete()
-    
-    def getTestResult(self, testData: TestImage):
-        return np.argmax(self.network.feedforward(testData.scaledData()))
-
-    def __testNetwork(self, testSet: list[TestImage]):
-        correctSet = np.zeros_like(CIFAR_LABELS, dtype=int)
-        predSet = np.zeros_like(CIFAR_LABELS, dtype=int)
-
-        print("Beginning testing...")
-
-        for item in testSet:
-            result = self.getTestResult(item)
-            if result == item.label:
-                correctSet[item.label] += 1
-            predSet[result] += 1
-        
-        correct = sum(correctSet)
-        self.logTestingComplete(correct, correctSet, predSet, len(testSet))
-    
-    def beginTesting(self, data: list[TestImage]) -> None:
-        """Begins testing the network against the specified testset. 
-        Only accuracy is reported, no backpropagation is performed.
-        Does not affect the network; is idempotent."""
-        self.__testNetwork(data)
-                    
-    def logPointComplete(self, caseIdx, cost, real, decision, label):
-        logging.logPointComplete(self.miniBatchIdx, caseIdx, cost, real, decision, label)
-
-    def logMinibatchComplete(self, avgCost, acc):
-        logging.logMinibatchComplete(self.miniBatchIdx, self.miniBatchCount, avgCost, acc)
-    
-    def logEpochComplete(self):
-        logging.logEpochComplete(self.currentEpoch, self.epochCount, 
-            round((self.epochCostSum / self.miniBatchCount), 4), 
-            self.epochCorrect, self.trainingDataSize)
-
-    def logTrainingComplete(self):
-        logging.logTrainingComplete(self.correct, self.samples)
-    
-    def logTestingComplete(self, correct, correctSet, predSet, numSamples):
-        logging.logTestingComplete(correct, correctSet, predSet, numSamples)
-
-    def saveNetworkState(self):
-        NeuralNetwork4File(self.network, self.currentEpoch).logToFile()
-    
-class NeuralNetwork4File():
-    def __init__(self, fullNetwork: NeuralNetwork4, epoch):
-        self.inputNeuronCount = INPUT_LENGTH
-        self.h1NeuronCount = len(fullNetwork.h1Biases)
-        self.h2NeuronCount = len(fullNetwork.h2Biases)
-        self.outputNeuronCount = OUTPUT_LENGTH
-        self.h1Weights = fullNetwork.h1Weights
-        self.h1Biases = fullNetwork.h1Biases
-        self.h2Weights = fullNetwork.h2Weights
-        self.h2Biases = fullNetwork.h2Biases
-        self.outputWeights = fullNetwork.outputWeights
-        self.outputBiases = fullNetwork.outputBiases
-        self.epoch = epoch
-    
-    def logToFile(self):
-        repickle(f"./results/{logging.F_TIMESTAMP}/trained/modelEpoch{self.epoch}", self)
-
-LOGGING_LEVEL = 1
-
-RNG_MEAN = 0
-RNG_STDDEV = 1
-
-layerH1NeuronCount = 80
-layerH2NeuronCount = 80
-trainingRate = 0.01
-miniBatchSize = 100
-epochCount = 200
+epochCount = 50
 
 logging.initEpochLogging(LOGGING_LEVEL)
 
