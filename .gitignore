@@ -3,3 +3,4 @@ cifar10TEST
 cifar10TRAIN
 /results
 /matlab
+/__pycache__

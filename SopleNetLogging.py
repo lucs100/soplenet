@@ -6,6 +6,7 @@ import csv
 
 F_TIMESTAMP = datetime.now().strftime("%Y%b%d_%Hh%Mm%Ss")
 os.makedirs(f"./results/{F_TIMESTAMP}/")
+os.makedirs(f"./results/{F_TIMESTAMP}/trained/")
 
 startTime = time.time()
 
@@ -56,4 +57,3 @@ def logTestingComplete(correct, correctSet, predSet, testSamples):
         file.write(f"Per-category accuracy: \t \t {correctSet*100 / 1000} \n")
         file.write(f"Per-category predictions: \t {predSet*100 / testSamples} \n")
         file.write(f"Total accuracy: \t \t {correct} samples correct out of {testSamples} samples [{correct*100/testSamples}%] \n")
-

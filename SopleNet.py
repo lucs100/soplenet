@@ -172,7 +172,7 @@ class NeuralNetwork4Trainer:
         #print(f"Beginning training on minibatch {self.miniBatchIdx}!")
 
         caseIdx = 0
-        correct = 0
+        batchCorrect = 0
         localCostHistory = []
             
         weightGradientH1History = []
@@ -192,8 +192,7 @@ class NeuralNetwork4Trainer:
             
             real = (decision == testCase.label)
             if real:
-                correct += 1
-                self.correct += 1
+                batchCorrect += 1
 
             caseCost = self.network.getIterationCost()
 
@@ -215,11 +214,12 @@ class NeuralNetwork4Trainer:
             caseIdx += 1
             self.samples += 1
 
-        acc = int(correct/(len(miniBatch))*100)
+        acc = int(batchCorrect/(len(miniBatch))*100)
         avgCost = np.mean(localCostHistory)
         self.globalCostHistory.append(avgCost)
         self.epochCostSum += avgCost
-        self.epochCorrect += self.correct
+        self.epochCorrect += batchCorrect
+        self.correct += batchCorrect #TODO: please refactor this.. only used in log training
 
         wH1d = np.mean(weightGradientH1History, axis=0)
         wH2d = np.mean(weightGradientH2History, axis=0)
@@ -317,16 +317,16 @@ class NeuralNetwork4File():
     def logToFile(self):
         repickle(f"./results/{logging.F_TIMESTAMP}/trained/modelEpoch{self.epoch}", self)
 
-LOGGING_LEVEL = 2
+LOGGING_LEVEL = 1
 
 RNG_MEAN = 0
 RNG_STDDEV = 1
 
-layerH1NeuronCount = 6
-layerH2NeuronCount = 6
-trainingRate = 0.005
+layerH1NeuronCount = 80
+layerH2NeuronCount = 80
+trainingRate = 0.01
 miniBatchSize = 100
-epochCount = 2
+epochCount = 200
 
 logging.initEpochLogging(LOGGING_LEVEL)
 
