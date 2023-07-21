@@ -2,9 +2,12 @@ import numpy as np
 import time
 from dataclasses import dataclass
 import pickle
-import gc
+import SopleNetLogging as logging
 
 np.set_printoptions(edgeitems=30, linewidth=100000)
+
+START_TIME = time.time()
+
 rng = np.random.default_rng()
 
 CIFAR_DATA_TRAIN: np.array
@@ -20,15 +23,24 @@ class TestImage:
     label: int
 
     def scaledData(self):
-        return ((self.data / 255)-0.5)
+        return (self.data / 255)
 
 def unpickle(file):
     with open(file, 'rb') as fo:
         dict = pickle.load(fo, encoding='bytes')
-    return dict    
+    fo.close()
+    return dict
+
+def repickle(filepath, data):
+    with open(filepath, 'wb') as file:
+        pickle.dump(data, file=file)
+    file.close()
 
 CIFAR_DATA_TRAIN = np.array(unpickle("cifar10TRAIN"))
 CIFAR_DATA_TEST = np.array(unpickle("cifar10TEST"))
+
+CIFAR_DATA_TRAIN_SAMPLES = len(CIFAR_DATA_TRAIN)
+CIFAR_DATA_TEST_SAMPLES = len(CIFAR_DATA_TEST)
 
 class InputSizeException(Exception):
     """Raised when the size of an input vector does not agree with the size of the input layer"""
@@ -50,14 +62,14 @@ class NeuralNetwork4: #4-layer neural network
         self.h2NeuronCount = h2NeuronCount
         self.outputNeuronCount = outputNeuronCount
 
-        self.h1Weights = rng.random((h1NeuronCount, inputNeuronCount))*2-1
-        self.h1Biases = rng.random((h1NeuronCount,))*2-1
+        self.h1Weights = rng.normal(RNG_MEAN, RNG_STDDEV, (h1NeuronCount, inputNeuronCount))
+        self.h1Biases = rng.normal(RNG_MEAN, RNG_STDDEV, (h1NeuronCount,))
 
-        self.h2Weights = rng.random((h2NeuronCount, h1NeuronCount))*2-1
-        self.h2Biases = rng.random((h2NeuronCount,))*2-1
+        self.h2Weights = rng.normal(RNG_MEAN, RNG_STDDEV, (h2NeuronCount, h1NeuronCount))
+        self.h2Biases = rng.normal(RNG_MEAN, RNG_STDDEV, (h2NeuronCount,))
 
-        self.outputWeights = rng.random((outputNeuronCount, h2NeuronCount))*2-1
-        self.outputBiases = rng.random((outputNeuronCount,))*2-1
+        self.outputWeights = rng.normal(RNG_MEAN, RNG_STDDEV, (outputNeuronCount, h2NeuronCount))
+        self.outputBiases = rng.normal(RNG_MEAN, RNG_STDDEV, (outputNeuronCount,))
 
         #Keep initialized to save time
         self.inputActivations = np.zeros((inputNeuronCount,))
@@ -103,9 +115,9 @@ class NeuralNetwork4: #4-layer neural network
 
     def backpropagateError(self) -> None:
         """Computes each layer's error vector via backpropagation."""
-        self.outputError = 2*(self.outputActivations-self.outputTarget)*dSigmoid(self.outputRaw)
+        self.outputError = -(self.outputTarget-self.outputActivations) #output layer error is special
 
-        self.h2Error = (self.outputWeights.transpose() @ self.outputError) * dSigmoid(self.h2Raw)
+        self.h2Error = (self.outputWeights.transpose() @ self.outputError) * dSigmoid(self.h2Raw) #each L is based on L+1
         self.h1Error = (self.h2Weights.transpose() @ self.h2Error) * dSigmoid(self.h1Raw)
     
     def getBiasGradient(self) -> list[np.array]:
@@ -136,6 +148,9 @@ class NeuralNetwork4: #4-layer neural network
         self.h2Weights -= (weightGradientH2)*eta
         self.outputWeights -= (weightGradientOutput)*eta
     
+    def logParameters(self) -> 'NeuralNetwork4File': #string name solves circular dependency
+        return NeuralNetwork4File(self)
+    
 class NeuralNetwork4Trainer:
     def __init__(self, network: NeuralNetwork4, defaultTrainingRate: float):
         self.network = network
@@ -146,20 +161,18 @@ class NeuralNetwork4Trainer:
 
         print("Initialized NeuralNetwork4Trainer!")
 
-    def setupTrainingData(self, data: list[TestImage], miniBatchCount: int) -> None:
-        """Accepts a list of data, and stores it as miniBatchCount random minibatches. miniBatchCount should cleanly divide data."""
-        rng.shuffle(data)
-        self.miniBatchSet = np.array_split(data, miniBatchCount)
-        self.miniBatchCount = len(self.miniBatchSet)
-        self.miniBatchSize = len(self.miniBatchSet[0])
-        self.miniBatchIdx = 0
-    
+    def setupTrainingData(self, data: list[TestImage]) -> None:
+        """Accepts a list of data, and stores it in the trainer."""
+        self.trainingData = data
+        self.trainingDataSize = len(data)
+
+
     def __trainMiniBatch(self, miniBatch: list[TestImage], trainingRate: int) -> None:
         """Begins training the network using loaded training data."""
         #print(f"Beginning training on minibatch {self.miniBatchIdx}!")
 
         caseIdx = 0
-        correct = 0
+        batchCorrect = 0
         localCostHistory = []
             
         weightGradientH1History = []
@@ -179,10 +192,11 @@ class NeuralNetwork4Trainer:
             
             real = (decision == testCase.label)
             if real:
-                correct += 1
-                self.correct += 1
+                batchCorrect += 1
 
-            localCostHistory.append(self.network.getIterationCost())
+            caseCost = self.network.getIterationCost()
+
+            localCostHistory.append(caseCost)
 
             biasGradient = self.network.getBiasGradient()
             weightGradient = self.network.getWeightGradient()
@@ -194,15 +208,18 @@ class NeuralNetwork4Trainer:
             biasGradientH2History.append(biasGradient[1])
             biasGradientOutputHistory.append(biasGradient[2])
 
-            if (caseIdx == 1 and VERBOSE):
-                print(f"Training... MB: {self.miniBatchIdx} \t Obj: {caseIdx} \t Cost: {self.network.getIterationCost()} \t Result: {real} [{decision}R, {testCase.label}E]")
-
+            if (LOGGING_LEVEL > 2):
+                self.logPointComplete(caseIdx, caseCost, real, decision, testCase.label)
+                
             caseIdx += 1
             self.samples += 1
 
-        acc = correct/(len(miniBatch))
+        acc = int(batchCorrect/(len(miniBatch))*100)
         avgCost = np.mean(localCostHistory)
         self.globalCostHistory.append(avgCost)
+        self.epochCostSum += avgCost
+        self.epochCorrect += batchCorrect
+        self.correct += batchCorrect #TODO: please refactor this.. only used in log training
 
         wH1d = np.mean(weightGradientH1History, axis=0)
         wH2d = np.mean(weightGradientH2History, axis=0)
@@ -214,28 +231,112 @@ class NeuralNetwork4Trainer:
         self.network.adjustWeights([wH1d, wH2d, wOd], eta=trainingRate)
         self.network.adjustBiases([bH1d, bH2d, bOd], eta=trainingRate)
 
-        print(f"Minibatch {self.miniBatchIdx}/{self.miniBatchCount} complete! \t Cost: {avgCost} \t Acc: {int(acc*100)}% \t Elapsed: {round(time.time() - start_time, 3)}s")
+        if LOGGING_LEVEL > 1 :
+            self.logMinibatchComplete(avgCost, acc)
 
-    def beginTraining(self) -> None:
+    def generateMiniBatches(self, miniBatchSize):
+        rng.shuffle(self.trainingData)
+        self.miniBatchSet = np.array_split(self.trainingData, (self.trainingDataSize // miniBatchSize))
+        self.miniBatchSize = len(self.miniBatchSet[0])
+        self.miniBatchCount = len(self.miniBatchSet)
+        self.miniBatchIdx = 0  
+
+    def beginTraining(self, epochCount: int, miniBatchSize: int) -> None:
         """Begins training the network with each loaded minibatch."""
-        miniBatch: list[TestImage]
-        for miniBatch in self.miniBatchSet:
-            self.__trainMiniBatch(miniBatch, self.defaultTrainingRate)
-            self.miniBatchIdx += 1
-        print(f"Training complete! \t Average accuracy:{round(100*self.correct/self.samples, 3)}%")
+        print("Beginning training...")
+        self.epochCount = epochCount
+        for self.currentEpoch in range(1, epochCount+1):
+            self.generateMiniBatches(miniBatchSize)
+            self.epochCorrect = 0
+            self.epochCostSum = 0
+            for miniBatch in self.miniBatchSet:
+                self.miniBatchIdx += 1
+                self.__trainMiniBatch(miniBatch, self.defaultTrainingRate)
+            self.logEpochComplete()
+            self.saveNetworkState()
+        self.logTrainingComplete()
+    
+    def getTestResult(self, testData: TestImage):
+        return np.argmax(self.network.feedforward(testData.scaledData()))
 
-VERBOSE = True
+    def __testNetwork(self, testSet: list[TestImage]):
+        correctSet = np.zeros_like(CIFAR_LABELS, dtype=int)
+        predSet = np.zeros_like(CIFAR_LABELS, dtype=int)
 
-layerH1NeuronCount = 50
-layerH2NeuronCount = 50
-trainingRate = 0.2
+        print("Beginning testing...")
+
+        for item in testSet:
+            result = self.getTestResult(item)
+            if result == item.label:
+                correctSet[item.label] += 1
+            predSet[result] += 1
+        
+        correct = sum(correctSet)
+        self.logTestingComplete(correct, correctSet, predSet, len(testSet))
+    
+    def beginTesting(self, data: list[TestImage]) -> None:
+        """Begins testing the network against the specified testset. 
+        Only accuracy is reported, no backpropagation is performed.
+        Does not affect the network; is idempotent."""
+        self.__testNetwork(data)
+                    
+    def logPointComplete(self, caseIdx, cost, real, decision, label):
+        logging.logPointComplete(self.miniBatchIdx, caseIdx, cost, real, decision, label)
+
+    def logMinibatchComplete(self, avgCost, acc):
+        logging.logMinibatchComplete(self.miniBatchIdx, self.miniBatchCount, avgCost, acc)
+    
+    def logEpochComplete(self):
+        logging.logEpochComplete(self.currentEpoch, self.epochCount, 
+            round((self.epochCostSum / self.miniBatchCount), 4), 
+            self.epochCorrect, self.trainingDataSize)
+
+    def logTrainingComplete(self):
+        logging.logTrainingComplete(self.correct, self.samples)
+    
+    def logTestingComplete(self, correct, correctSet, predSet, numSamples):
+        logging.logTestingComplete(correct, correctSet, predSet, numSamples)
+
+    def saveNetworkState(self):
+        NeuralNetwork4File(self.network, self.currentEpoch).logToFile()
+    
+class NeuralNetwork4File():
+    def __init__(self, fullNetwork: NeuralNetwork4, epoch):
+        self.inputNeuronCount = INPUT_LENGTH
+        self.h1NeuronCount = len(fullNetwork.h1Biases)
+        self.h2NeuronCount = len(fullNetwork.h2Biases)
+        self.outputNeuronCount = OUTPUT_LENGTH
+        self.h1Weights = fullNetwork.h1Weights
+        self.h1Biases = fullNetwork.h1Biases
+        self.h2Weights = fullNetwork.h2Weights
+        self.h2Biases = fullNetwork.h2Biases
+        self.outputWeights = fullNetwork.outputWeights
+        self.outputBiases = fullNetwork.outputBiases
+        self.epoch = epoch
+    
+    def logToFile(self):
+        repickle(f"./results/{logging.F_TIMESTAMP}/trained/modelEpoch{self.epoch}", self)
+
+LOGGING_LEVEL = 1
+
+RNG_MEAN = 0
+RNG_STDDEV = 1
+
+layerH1NeuronCount = 80
+layerH2NeuronCount = 80
+trainingRate = 0.01
+miniBatchSize = 100
+epochCount = 200
+
+logging.initEpochLogging(LOGGING_LEVEL)
 
 cifarNetwork = NeuralNetwork4(INPUT_LENGTH, layerH1NeuronCount, layerH2NeuronCount, OUTPUT_LENGTH)
 cifarNetworkTrainer = NeuralNetwork4Trainer(cifarNetwork, trainingRate)
-cifarNetworkTrainer.setupTrainingData(CIFAR_DATA_TRAIN, (50000//100))
+cifarNetworkTrainer.setupTrainingData(CIFAR_DATA_TRAIN)
 
 start_time = time.time()
-cifarNetworkTrainer.beginTraining()
+cifarNetworkTrainer.beginTraining(epochCount, miniBatchSize)
+cifarNetworkTrainer.beginTesting(CIFAR_DATA_TEST)
 
-
-
+#repickle(f"./results/{logging.F_TIMESTAMP}/cifarModelTrained", cifarNetworkTrainer)
+repickle(f"./results/{logging.F_TIMESTAMP}/hyperparameters", [RNG_MEAN, RNG_STDDEV, layerH1NeuronCount, layerH2NeuronCount, trainingRate, miniBatchSize, epochCount])

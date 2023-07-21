@@ -1,3 +1,6 @@
 /cifar-10-batches-py
 cifar10TEST
 cifar10TRAIN
+/results
+/matlab
+/__pycache__
