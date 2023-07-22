@@ -10,6 +10,8 @@ START_TIME = time.time()
 
 rng = np.random.default_rng()
 
+EPSILON = 0.000000000000001
+
 CIFAR_DATA_TRAIN: np.array
 CIFAR_DATA_TEST: np.array
 CIFAR_LABELS = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
@@ -111,7 +113,8 @@ class NeuralNetwork4: #4-layer neural network
     
     def getIterationCost(self) -> None:
         """Returns the scalar cost of the last network feedforward."""
-        return np.sum((self.outputActivations-self.outputTarget)**2)
+        return np.sum(self.outputTarget * np.log(self.outputActivations + EPSILON) 
+            + (1-self.outputTarget)*(np.log((1-self.outputActivations)+EPSILON)))
 
     def backpropagateError(self) -> None:
         """Computes each layer's error vector via backpropagation."""
@@ -314,16 +317,16 @@ class NeuralNetwork4File():
     def logToFile(self):
         repickle(f"./results/{logging.F_TIMESTAMP}/trained/modelEpoch{self.epoch}", self)
 
-LOGGING_LEVEL = 3
+LOGGING_LEVEL = 1
 
 RNG_MEAN = 0
 RNG_STDDEV = 1
 
-layerH1NeuronCount = 180
-layerH2NeuronCount = 180
-trainingRate = 0.025
+layerH1NeuronCount = 140
+layerH2NeuronCount = 140
+trainingRate = 0.05
 miniBatchSize = 100
-epochCount = 50
+epochCount = 300
 
 logging.initEpochLogging(LOGGING_LEVEL)
 
