@@ -65,7 +65,8 @@ def logTestingComplete(confusionMatrix):
         print("\nTesting complete!")
         print(f"Confusion matrix: \n {confusionMatrix}")
         print(f"Total accuracy: {correct} samples correct out of {testSamples} samples [{correct*100/testSamples}%]")
-    with open(f"./results/{F_TIMESTAMP}/TEST_LOG.csv", "w", newline="\n") as file:
-        file.write("\nTesting complete!")
+    with open(f"./results/{F_TIMESTAMP}/TEST_LOG.txt", "w", newline="\n") as file:
+        file.write("Testing complete!")
         file.write(f"Confusion matrix: \n {confusionMatrix}")
         file.write(f"Total accuracy: {correct} samples correct out of {testSamples} samples [{correct*100/testSamples}%]")
+    np.savetxt(f"./results/{F_TIMESTAMP}/TEST_CONFUSION.csv", confusionMatrix, delimiter=",")
