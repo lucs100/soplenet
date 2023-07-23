@@ -3,10 +3,9 @@ import time
 from datetime import datetime
 import os
 import csv
+import json
 
-F_TIMESTAMP = datetime.now().strftime("%Y%b%d_%Hh%Mm%Ss")
-os.makedirs(f"./results/{F_TIMESTAMP}/")
-os.makedirs(f"./results/{F_TIMESTAMP}/trained/")
+F_TIMESTAMP = 0
 
 startTime = time.time()
 
@@ -20,8 +19,13 @@ def getElapsedTime():
     return round(time.time() - startTime, 3)
 
 def initEpochLogging(level):
+    global F_TIMESTAMP
+    F_TIMESTAMP = datetime.now().strftime("%Y%b%d_%Hh%Mm%Ss")
     global LoggingLevel
     LoggingLevel = level
+    
+    os.makedirs(f"./results/{F_TIMESTAMP}/")
+    os.makedirs(f"./results/{F_TIMESTAMP}/trained/")
     with open(f"./results/{F_TIMESTAMP}/trainingLog.csv", "a+", newline="\n") as csvfile:
         sopleWriter = csv.writer(csvfile, delimiter = ' ')
         sopleWriter.writerow(["Epoch", "MaxEpoch", "AvgCost", "EpochAcc", "Elapsed"])
@@ -62,10 +66,15 @@ def logTestingComplete(confusionMatrix):
     testSamples = np.sum(confusionMatrix)
     if LoggingLevel > 0:
         print("\nTesting complete!")
-        print(f"Confusion matrix: \n {confusionMatrix}")
+        print(f"Confusion matrix: \n {confusionMatrix} \n")
         print(f"Total accuracy: {correct} samples correct out of {testSamples} samples [{correct*100/testSamples}%]")
     with open(f"./results/{F_TIMESTAMP}/TEST_LOG.txt", "w", newline="\n") as file:
         file.write("Testing complete!")
-        file.write(f"Confusion matrix: \n {confusionMatrix}")
+        file.write(f"Confusion matrix: \n {confusionMatrix} \n")
         file.write(f"Total accuracy: {correct} samples correct out of {testSamples} samples [{correct*100/testSamples}%]")
     np.savetxt(f"./results/{F_TIMESTAMP}/TEST_CONFUSION.csv", confusionMatrix, fmt="%d", delimiter=",")
+
+def logHyperparameters(hpDict):
+    with open(f"./results/{F_TIMESTAMP}/hyperparameters.txt", "w") as file:
+        file.write(json.dumps(hpDict, indent=2))
+    file.close()

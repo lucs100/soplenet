@@ -27,8 +27,8 @@ class TestImage:
     def scaledData(self):
         return (self.data / 255)
 
-def unpickle(file):
-    with open(file, 'rb') as fo:
+def unpickle(filepath):
+    with open(filepath, 'rb') as fo:
         dict = pickle.load(fo, encoding='bytes')
     fo.close()
     return dict
@@ -37,12 +37,6 @@ def repickle(filepath, data):
     with open(filepath, 'wb') as file:
         pickle.dump(data, file=file)
     file.close()
-
-CIFAR_DATA_TRAIN = np.array(unpickle("cifar10TRAIN"))
-CIFAR_DATA_TEST = np.array(unpickle("cifar10TEST"))
-
-CIFAR_DATA_TRAIN_SAMPLES = len(CIFAR_DATA_TRAIN)
-CIFAR_DATA_TEST_SAMPLES = len(CIFAR_DATA_TEST)
 
 class InputSizeException(Exception):
     """Raised when the size of an input vector does not agree with the size of the input layer"""
@@ -113,7 +107,7 @@ class NeuralNetwork4: #4-layer neural network
     
     def getIterationCost(self) -> None:
         """Returns the scalar cost of the last network feedforward."""
-        return np.sum(self.outputTarget * np.log(self.outputActivations + EPSILON) 
+        return -np.sum(self.outputTarget * np.log(self.outputActivations + EPSILON) 
             + (1-self.outputTarget)*(np.log((1-self.outputActivations)+EPSILON)))
 
     def backpropagateError(self) -> None:
@@ -317,16 +311,30 @@ class NeuralNetwork4File():
     def logToFile(self):
         repickle(f"./results/{logging.F_TIMESTAMP}/trained/modelEpoch{self.epoch}", self)
 
+def NeuralNetwork4Backtest(filepath_to_trained: str, count: int):
+    for model in range(1, count+1):
+        model = unpickle(f"{filepath_to_trained}/modelEpoch{count}")
+
+
+# Main Code
+
+
+CIFAR_DATA_TRAIN = np.array(unpickle("cifar10TRAIN"))
+CIFAR_DATA_TEST = np.array(unpickle("cifar10TEST"))
+
+CIFAR_DATA_TRAIN_SAMPLES = len(CIFAR_DATA_TRAIN)
+CIFAR_DATA_TEST_SAMPLES = len(CIFAR_DATA_TEST)
+
 LOGGING_LEVEL = 1
 
 RNG_MEAN = 0
 RNG_STDDEV = 1
 
-layerH1NeuronCount = 140
-layerH2NeuronCount = 140
-trainingRate = 0.05
+layerH1NeuronCount = 150
+layerH2NeuronCount = 40
+trainingRate = 0.25
 miniBatchSize = 100
-epochCount = 300
+epochCount = 150
 
 logging.initEpochLogging(LOGGING_LEVEL)
 
@@ -339,4 +347,12 @@ cifarNetworkTrainer.beginTraining(epochCount, miniBatchSize)
 cifarNetworkTrainer.beginTesting(CIFAR_DATA_TEST)
 
 #repickle(f"./results/{logging.F_TIMESTAMP}/cifarModelTrained", cifarNetworkTrainer)
-repickle(f"./results/{logging.F_TIMESTAMP}/hyperparameters", [RNG_MEAN, RNG_STDDEV, layerH1NeuronCount, layerH2NeuronCount, trainingRate, miniBatchSize, epochCount])
+logging.logHyperparameters(
+        {"mean":RNG_MEAN, 
+        "stddev": RNG_STDDEV,
+        "h1": layerH1NeuronCount,
+        "h2": layerH2NeuronCount,
+        "eta": trainingRate,
+        "mbsize": miniBatchSize,
+        "epochs": epochCount}
+    )
