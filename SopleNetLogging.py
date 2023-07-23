@@ -58,7 +58,6 @@ def logTestingComplete(correct, correctSet, predSet, testSamples):
         file.write(f"Per-category predictions: \t {predSet*100 / testSamples} \n")
         file.write(f"Total accuracy: \t \t {correct} samples correct out of {testSamples} samples [{correct*100/testSamples}%] \n")
 def logTestingComplete(confusionMatrix):
-    np.set_printoptions(formatter={'float': '{: 0.2f}'.format})
     correct = np.trace(confusionMatrix)
     testSamples = np.sum(confusionMatrix)
     if LoggingLevel > 0:
@@ -69,4 +68,4 @@ def logTestingComplete(confusionMatrix):
         file.write("Testing complete!")
         file.write(f"Confusion matrix: \n {confusionMatrix}")
         file.write(f"Total accuracy: {correct} samples correct out of {testSamples} samples [{correct*100/testSamples}%]")
-    np.savetxt(f"./results/{F_TIMESTAMP}/TEST_CONFUSION.csv", confusionMatrix, delimiter=",")
+    np.savetxt(f"./results/{F_TIMESTAMP}/TEST_CONFUSION.csv", confusionMatrix, fmt="%d", delimiter=",")
