@@ -49,19 +49,6 @@ def logEpochComplete(epoch, maxEpoch, avgCost, epochCorrect, trainingDataSize):
 def logTrainingComplete(correct, samples):
     print(f"Training complete! \t Average accuracy:{round(100*correct/samples, 3)}%")
 
-# def logTestingComplete(correct, correctSet, predSet, testSamples):
-#     np.set_printoptions(formatter={'float': '{: 0.2f}'.format})
-#     if LoggingLevel > 0:
-#         print("\nTesting complete!")
-#         print(f"Per-category accuracy: \t \t {correctSet*100 / 1000}")
-#         print(f"Per-category predictions: \t {predSet*100 / testSamples}")
-#         print(f"Total accuracy: \t \t {correct} samples correct out of {testSamples} samples [{correct*100/testSamples}%]")
-#     with open(f"./results/{F_TIMESTAMP}/TEST_LOG.csv", "w", newline="\n") as file:
-#         file.write("Testing complete! \n")
-#         file.write(f"Per-category accuracy: \t \t {correctSet*100 / 1000} \n")
-#         file.write(f"Per-category predictions: \t {predSet*100 / testSamples} \n")
-#         file.write(f"Total accuracy: \t \t {correct} samples correct out of {testSamples} samples [{correct*100/testSamples}%] \n")
-
 def logTestingComplete(confusionMatrix):
     correct = np.trace(confusionMatrix)
     testSamples = np.sum(confusionMatrix)
