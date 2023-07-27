@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import time
 from dataclasses import dataclass
@@ -311,9 +312,35 @@ class NeuralNetwork4File():
     def logToFile(self):
         repickle(f"./results/{logging.F_TIMESTAMP}/trained/modelEpoch{self.epoch}", self)
 
-def NeuralNetwork4Backtest(filepath_to_trained: str, count: int):
-    for model in range(1, count+1):
-        model = unpickle(f"{filepath_to_trained}/modelEpoch{count}")
+def NeuralNetwork4Backtest(model_timestamp: str, testSet: list[TestImage]):
+    print(f"Beginning backtest of model {model_timestamp}...")
+    epochCount = len(os.listdir(f"./results/{model_timestamp}/trained/"))
+    if not (logging.initBacktestLog(model_timestamp)):
+        print(f"Failsafe engaged!")
+        print(f"Model {model_timestamp} already has a backtest log.")
+        print(f"Delete it to re-backtest.")
+        return 0
+    samples = len(testSet)
+    for epochNum in range(1, epochCount+1):
+        modelFile: NeuralNetwork4File
+        modelFile = unpickle(f"./results/{model_timestamp}/trained/modelEpoch{epochNum}")
+        newModel = NeuralNetwork4(modelFile.inputNeuronCount, modelFile.h1NeuronCount, 
+            modelFile.h2NeuronCount, modelFile.outputNeuronCount)
+        newModel.h1Weights = modelFile.h1Weights
+        newModel.h1Biases = modelFile.h1Biases
+        newModel.h2Weights = modelFile.h2Weights
+        newModel.h2Biases = modelFile.h2Biases
+        newModel.outputWeights = modelFile.outputWeights
+        newModel.outputBiases = modelFile.outputBiases
+        correct = 0
+        for item in testSet:
+            if np.argmax(newModel.feedforward(item.scaledData())) == item.label:
+                correct += 1
+        logging.logBacktestComplete(model_timestamp, epochNum, epochCount, correct, samples)
+    print("Done backtest!")
+        
+        
+
 
 
 # Main Code
@@ -325,7 +352,7 @@ CIFAR_DATA_TEST = np.array(unpickle("cifar10TEST"))
 CIFAR_DATA_TRAIN_SAMPLES = len(CIFAR_DATA_TRAIN)
 CIFAR_DATA_TEST_SAMPLES = len(CIFAR_DATA_TEST)
 
-LOGGING_LEVEL = 1
+LOGGING_LEVEL = 2
 
 RNG_MEAN = 0
 RNG_STDDEV = 1
@@ -334,7 +361,7 @@ layerH1NeuronCount = 150
 layerH2NeuronCount = 40
 trainingRate = 0.25
 miniBatchSize = 100
-epochCount = 150
+epochCount = 3
 
 logging.initEpochLogging(LOGGING_LEVEL)
 
@@ -356,3 +383,5 @@ logging.logHyperparameters(
         "mbsize": miniBatchSize,
         "epochs": epochCount}
     )
+
+# NeuralNetwork4Backtest("2023Jul23_15h45m36s", CIFAR_DATA_TEST)
