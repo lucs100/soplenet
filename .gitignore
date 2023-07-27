@@ -3,3 +3,4 @@ cifar10TEST
 cifar10TRAIN
 /results
 /__pycache__
+/reportAssets/matlab/trial6Data/trained
